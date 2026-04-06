@@ -28,6 +28,9 @@ manager
 
 GET http://localhost:5000/api/users
 
+To uplaod
+http://localhost:5000/api/upload
+
 Start backend (npm run dev)
 
 

@@ -13,6 +13,7 @@ import NavigationBar from "../components/NavigationBar";
 import ToastMessage from "../components/ToastMessage";
 import ConfirmModal from "../components/ConfirmModal";
 import { useAuth } from "../context/AuthContext";
+import api from "../services/api";
 import {
   getProducts,
   createProduct,
@@ -37,6 +38,8 @@ function ProductManagementPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -79,6 +82,7 @@ function ProductManagementPage() {
   const openCreateModal = () => {
     setEditingProduct(null);
     setFormData(initialFormState);
+    setSelectedFile(null);
     setShowModal(true);
   };
 
@@ -94,14 +98,16 @@ function ProductManagementPage() {
       vendorPartNumber: product.vendorPartNumber || "",
       category: product.category || "",
     });
+    setSelectedFile(null);
     setShowModal(true);
   };
 
   const closeModal = () => {
-    if (saving) return;
+    if (saving || uploadingImage) return;
     setShowModal(false);
     setEditingProduct(null);
     setFormData(initialFormState);
+    setSelectedFile(null);
   };
 
   const handleChange = (e) => {
@@ -110,6 +116,53 @@ function ProductManagementPage() {
       ...prev,
       [name]: value,
     }));
+  };
+
+  const handleFileChange = (e) => {
+    setSelectedFile(e.target.files[0] || null);
+  };
+
+  const handleUploadImage = async () => {
+    if (!selectedFile) {
+      setToast({
+        show: true,
+        message: "Please select an image first",
+        variant: "danger",
+      });
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+
+      const formDataUpload = new FormData();
+      formDataUpload.append("image", selectedFile);
+
+      const response = await api.post("/upload", formDataUpload, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      setFormData((prev) => ({
+        ...prev,
+        image: response.data.imageUrl,
+      }));
+
+      setToast({
+        show: true,
+        message: "Image uploaded successfully",
+        variant: "success",
+      });
+    } catch (err) {
+      setToast({
+        show: true,
+        message: err.response?.data?.message || "Error uploading image",
+        variant: "danger",
+      });
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleSaveProduct = async (e) => {
@@ -256,6 +309,7 @@ function ProductManagementPage() {
                     <th>Category</th>
                     <th>Unit</th>
                     <th>Pkg Size</th>
+                    <th>Image</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -264,16 +318,29 @@ function ProductManagementPage() {
                     <tr key={product.id}>
                       <td>
                         <div className="fw-semibold">{product.description}</div>
-                        {product.image ? (
-                          <Badge bg="light" text="dark">
-                            Image
-                          </Badge>
-                        ) : null}
                       </td>
                       <td>{product.stockNumber}</td>
                       <td>{product.category}</td>
                       <td>{product.uom}</td>
                       <td>{product.pkgSize}</td>
+                      <td>
+                        {product.image ? (
+                          <img
+                            src={product.image}
+                            alt={product.description}
+                            style={{
+                              width: "50px",
+                              height: "50px",
+                              objectFit: "cover",
+                              borderRadius: "6px",
+                            }}
+                          />
+                        ) : (
+                          <Badge bg="light" text="dark">
+                            No Image
+                          </Badge>
+                        )}
+                      </td>
                       <td className="d-flex gap-2">
                         <Button
                           size="sm"
@@ -303,7 +370,7 @@ function ProductManagementPage() {
       </Container>
 
       <Modal show={showModal} onHide={closeModal} centered size="lg">
-        <Modal.Header closeButton={!saving}>
+        <Modal.Header closeButton={!saving && !uploadingImage}>
           <Modal.Title>
             {editingProduct ? "Edit Product" : "Add Product"}
           </Modal.Title>
@@ -313,15 +380,48 @@ function ProductManagementPage() {
           <Modal.Body>
             <div className="row">
               <div className="col-md-6 mb-3">
-                <Form.Label>Image URL / Path</Form.Label>
+                <Form.Label>Product Image</Form.Label>
                 <Form.Control
-                  type="text"
-                  name="image"
-                  value={formData.image}
-                  disabled={saving}
-                  onChange={handleChange}
-                  placeholder="Enter image URL or path"
+                  type="file"
+                  accept="image/*"
+                  disabled={saving || uploadingImage}
+                  onChange={handleFileChange}
                 />
+
+                <Button
+                  className="mt-2"
+                  size="sm"
+                  type="button"
+                  onClick={handleUploadImage}
+                  disabled={uploadingImage || saving}
+                >
+                  {uploadingImage ? "Uploading..." : "Upload Image"}
+                </Button>
+
+                {formData.image && (
+                  <>
+                    <div className="mt-3">
+                      <img
+                        src={formData.image}
+                        alt="Preview"
+                        style={{
+                          width: "120px",
+                          height: "120px",
+                          objectFit: "cover",
+                          borderRadius: "8px",
+                          border: "1px solid #ddd",
+                        }}
+                      />
+                    </div>
+
+                    <Form.Control
+                      className="mt-2"
+                      type="text"
+                      value={formData.image}
+                      readOnly
+                    />
+                  </>
+                )}
               </div>
 
               <div className="col-md-6 mb-3">
@@ -411,11 +511,19 @@ function ProductManagementPage() {
           </Modal.Body>
 
           <Modal.Footer>
-            <Button variant="secondary" disabled={saving} onClick={closeModal}>
+            <Button
+              variant="secondary"
+              disabled={saving || uploadingImage}
+              onClick={closeModal}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : editingProduct ? "Update Product" : "Create Product"}
+            <Button type="submit" disabled={saving || uploadingImage}>
+              {saving
+                ? "Saving..."
+                : editingProduct
+                ? "Update Product"
+                : "Create Product"}
             </Button>
           </Modal.Footer>
         </Form>
