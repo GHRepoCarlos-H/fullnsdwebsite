@@ -4,6 +4,8 @@ import ProductsPage from "./pages/ProductsPage";
 import MyCartsPage from "./pages/MyCartsPage";
 import LeadershipCartsPage from "./pages/LeadershipCartsPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminUsersPage from "./pages/AdminUsersPage";
+import ProductManagementPage from "./pages/ProductManagementPage";
 
 function App() {
   return (
@@ -34,6 +36,24 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["supervisor", "manager", "admin"]}>
               <LeadershipCartsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin-users"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminUsersPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/manage-products"
+          element={
+            <ProtectedRoute allowedRoles={["supervisor", "manager", "admin"]}>
+              <ProductManagementPage />
             </ProtectedRoute>
           }
         />

@@ -8,21 +8,30 @@ import {
   Alert,
   Form,
   Modal,
+  Spinner,
 } from "react-bootstrap";
 import NavigationBar from "../components/NavigationBar";
+import ToastMessage from "../components/ToastMessage";
 import api from "../services/api";
 import { createCart, getMyCarts, addItemToCart } from "../services/cartService";
 
 function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [myCarts, setMyCarts] = useState([]);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [modalLoading, setModalLoading] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [selectedCartId, setSelectedCartId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [newCartTitle, setNewCartTitle] = useState("");
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("");
+  const [toast, setToast] = useState({
+    show: false,
+    message: "",
+    variant: "success",
+  });
 
   useEffect(() => {
     fetchProducts();
@@ -31,10 +40,17 @@ function ProductsPage() {
 
   const fetchProducts = async () => {
     try {
+      setLoadingProducts(true);
       const response = await api.get("/products");
       setProducts(response.data);
     } catch (err) {
-      setError(err.response?.data?.message || "Error loading products");
+      setToast({
+        show: true,
+        message: err.response?.data?.message || "Error loading products",
+        variant: "danger",
+      });
+    } finally {
+      setLoadingProducts(false);
     }
   };
 
@@ -44,7 +60,11 @@ function ProductsPage() {
       const draftCarts = carts.filter((cart) => cart.status === "draft");
       setMyCarts(draftCarts);
     } catch (err) {
-      setError(err.response?.data?.message || "Error loading carts");
+      setToast({
+        show: true,
+        message: err.response?.data?.message || "Error loading carts",
+        variant: "danger",
+      });
     }
   };
 
@@ -54,16 +74,20 @@ function ProductsPage() {
     setQuantity(1);
     setNewCartTitle("");
     setShowCartModal(true);
-    setError("");
-    setSuccess("");
   };
 
   const handleCreateCartAndAdd = async () => {
     try {
       if (!newCartTitle.trim()) {
-        setError("Please enter a cart title");
+        setToast({
+          show: true,
+          message: "Please enter a cart title",
+          variant: "danger",
+        });
         return;
       }
+
+      setModalLoading(true);
 
       const newCart = await createCart({
         title: newCartTitle,
@@ -75,75 +99,157 @@ function ProductsPage() {
         quantity: Number(quantity),
       });
 
-      setSuccess("New cart created and item added successfully");
+      setToast({
+        show: true,
+        message: "New cart created and item added successfully",
+        variant: "success",
+      });
+
       await fetchMyDraftCarts();
       setShowCartModal(false);
     } catch (err) {
-      setError(err.response?.data?.message || "Error creating cart");
+      setToast({
+        show: true,
+        message: err.response?.data?.message || "Error creating cart",
+        variant: "danger",
+      });
+    } finally {
+      setModalLoading(false);
     }
   };
 
   const handleAddToExistingCart = async () => {
     try {
       if (!selectedCartId) {
-        setError("Please select a cart");
+        setToast({
+          show: true,
+          message: "Please select a cart",
+          variant: "danger",
+        });
         return;
       }
+
+      setModalLoading(true);
 
       await addItemToCart(Number(selectedCartId), {
         productId: selectedProductId,
         quantity: Number(quantity),
       });
 
-      setSuccess("Item added to cart successfully");
+      setToast({
+        show: true,
+        message: "Item added to cart successfully",
+        variant: "success",
+      });
+
       setShowCartModal(false);
       await fetchMyDraftCarts();
     } catch (err) {
-      setError(err.response?.data?.message || "Error adding item to cart");
+      setToast({
+        show: true,
+        message: err.response?.data?.message || "Error adding item to cart",
+        variant: "danger",
+      });
+    } finally {
+      setModalLoading(false);
     }
   };
+
+  const filteredProducts = products
+    .filter((p) =>
+      p.description.toLowerCase().includes(search.toLowerCase())
+    )
+    .filter((p) => (category ? p.category === category : true));
 
   return (
     <>
       <NavigationBar />
 
+      <ToastMessage
+        show={toast.show}
+        message={toast.message}
+        variant={toast.variant}
+        onClose={() => setToast({ ...toast, show: false })}
+      />
+
       <Container className="py-4">
-        <h2 className="mb-4">Product Catalog</h2>
+        <div className="d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <h2 className="mb-1">Product Catalog</h2>
+            <p className="text-muted mb-0">
+              Browse products and add them to a draft cart.
+            </p>
+          </div>
+        </div>
 
-        {error && <Alert variant="danger">{error}</Alert>}
-        {success && <Alert variant="success">{success}</Alert>}
+        <Row className="mb-4">
+          <Col md={6}>
+            <Form.Control
+              placeholder="Search products..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </Col>
 
-        <Row>
-          {products.map((product) => (
-            <Col key={product.id} md={6} lg={4} className="mb-4">
-              <Card className="h-100 shadow-sm">
-                <Card.Body>
-                  <Card.Title>{product.description}</Card.Title>
-                  <Card.Text>
-                    <strong>Category:</strong> {product.category}
-                  </Card.Text>
-                  <Card.Text>
-                    <strong>Stock #:</strong> {product.stockNumber}
-                  </Card.Text>
-                  <Card.Text>
-                    <strong>Unit:</strong> {product.uom}
-                  </Card.Text>
-                  <Card.Text>
-                    <strong>Pkg Size:</strong> {product.pkgSize}
-                  </Card.Text>
-
-                  <Button onClick={() => openAddToCartModal(product.id)}>
-                    Add to Cart
-                  </Button>
-                </Card.Body>
-              </Card>
-            </Col>
-          ))}
+          <Col md={4}>
+            <Form.Select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              <option value="">All Categories</option>
+              <option value="Bread">Bread</option>
+              <option value="Pastry">Pastry</option>
+              <option value="Cake">Cake</option>
+            </Form.Select>
+          </Col>
         </Row>
+
+        {loadingProducts ? (
+          <div className="text-center py-5">
+            <Spinner animation="border" />
+            <div className="mt-3">Loading products...</div>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <Alert variant="info">No active products found.</Alert>
+        ) : (
+          <Row>
+            {filteredProducts.map((product) => (
+              <Col key={product.id} md={6} lg={4} className="mb-4">
+                <Card className="h-100 shadow-sm border-0">
+                  <Card.Body className="d-flex flex-column">
+                    <Card.Title>{product.description}</Card.Title>
+                    <Card.Text className="mb-1">
+                      <strong>Category:</strong> {product.category}
+                    </Card.Text>
+                    <Card.Text className="mb-1">
+                      <strong>Stock #:</strong> {product.stockNumber}
+                    </Card.Text>
+                    <Card.Text className="mb-1">
+                      <strong>Unit:</strong> {product.uom}
+                    </Card.Text>
+                    <Card.Text className="mb-3">
+                      <strong>Pkg Size:</strong> {product.pkgSize}
+                    </Card.Text>
+
+                    <div className="mt-auto">
+                      <Button onClick={() => openAddToCartModal(product.id)}>
+                        Add to Cart
+                      </Button>
+                    </div>
+                  </Card.Body>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        )}
       </Container>
 
-      <Modal show={showCartModal} onHide={() => setShowCartModal(false)}>
-        <Modal.Header closeButton>
+      <Modal
+        show={showCartModal}
+        onHide={() => !modalLoading && setShowCartModal(false)}
+        centered
+      >
+        <Modal.Header closeButton={!modalLoading}>
           <Modal.Title>Add Product to Cart</Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -153,6 +259,7 @@ function ProductsPage() {
               type="number"
               min="1"
               value={quantity}
+              disabled={modalLoading}
               onChange={(e) => setQuantity(e.target.value)}
             />
           </Form.Group>
@@ -161,6 +268,7 @@ function ProductsPage() {
             <Form.Label>Select Existing Draft Cart</Form.Label>
             <Form.Select
               value={selectedCartId}
+              disabled={modalLoading}
               onChange={(e) => setSelectedCartId(e.target.value)}
             >
               <option value="">Choose a draft cart</option>
@@ -172,7 +280,7 @@ function ProductsPage() {
             </Form.Select>
           </Form.Group>
 
-          <div className="text-center my-3">OR</div>
+          <div className="text-center my-3 text-muted">OR</div>
 
           <Form.Group className="mb-3">
             <Form.Label>Create New Cart</Form.Label>
@@ -180,19 +288,32 @@ function ProductsPage() {
               type="text"
               placeholder="Enter new cart title"
               value={newCartTitle}
+              disabled={modalLoading}
               onChange={(e) => setNewCartTitle(e.target.value)}
             />
           </Form.Group>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowCartModal(false)}>
+          <Button
+            variant="secondary"
+            disabled={modalLoading}
+            onClick={() => setShowCartModal(false)}
+          >
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleAddToExistingCart}>
-            Add to Existing Cart
+          <Button
+            variant="primary"
+            disabled={modalLoading}
+            onClick={handleAddToExistingCart}
+          >
+            {modalLoading ? "Working..." : "Add to Existing Cart"}
           </Button>
-          <Button variant="success" onClick={handleCreateCartAndAdd}>
-            Create New Cart
+          <Button
+            variant="success"
+            disabled={modalLoading}
+            onClick={handleCreateCartAndAdd}
+          >
+            {modalLoading ? "Working..." : "Create New Cart"}
           </Button>
         </Modal.Footer>
       </Modal>

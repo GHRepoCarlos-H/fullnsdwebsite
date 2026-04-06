@@ -1,8 +1,8 @@
 import { Navigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 function ProtectedRoute({ children, allowedRoles = [] }) {
-  const token = localStorage.getItem("token");
-  const user = JSON.parse(localStorage.getItem("user"));
+  const { user, token } = useAuth();
 
   if (!token || !user) {
     return <Navigate to="/" replace />;
